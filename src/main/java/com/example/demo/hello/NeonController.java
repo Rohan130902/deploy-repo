@@ -1,12 +1,19 @@
 package com.example.demo.hello;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import com.example.demo.security.JwtUtil;
+
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
-@RequestMapping("/neon")
+@RequestMapping
 public class NeonController {
-
+	
+	 
     private final PlayingWithNeonRepository repository;
 
     public NeonController(PlayingWithNeonRepository repository) {
@@ -27,4 +34,6 @@ public class NeonController {
     public List<PlayingWithNeon> getAll() {
         return repository.findAll();
     }
+    
+ 
 }
