@@ -58,7 +58,7 @@ jobs:
   # 2) Build & push Docker image for each branch to its own repo
   docker-build-push:
     runs-on: ubuntu-latest
-    needs: build-test
+    needs: build-test   # only run if tests passed
 
     steps:
       - name: Checkout
@@ -70,7 +70,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ---- MAIN branch ----
+      # ---- main → deploy-repo-main ----
       - name: Build & push MAIN image
         if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v6
@@ -81,7 +81,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-main:main-latest
             ${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-main:main_${{ github.sha }}
 
-      # ---- DEVELOP branch ----
+      # ---- develop (dev env) → deploy-repo-dev ----
       - name: Build & push DEV image
         if: github.ref == 'refs/heads/develop'
         uses: docker/build-push-action@v6
@@ -92,7 +92,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-dev:dev-latest
             ${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-dev:dev_${{ github.sha }}
 
-      # ---- QA branch ----
+      # ---- qa → deploy-repo-qa ----
       - name: Build & push QA image
         if: github.ref == 'refs/heads/qa'
         uses: docker/build-push-action@v6
@@ -103,7 +103,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-qa:qa-latest
             ${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-qa:qa_${{ github.sha }}
 
-      # ---- PROD branch ----
+      # ---- prod → deploy-repo-prod ----
       - name: Build & push PROD image
         if: github.ref == 'refs/heads/prod'
         uses: docker/build-push-action@v6
@@ -113,3 +113,44 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-prod:prod-latest
             ${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-prod:prod_${{ github.sha }}
+
+
+  # 3) Deploy MAIN to EKS (only after docker-build-push is done)
+  deploy-main-to-eks:
+    needs: docker-build-push           # ⬅️ this forces order: build → push → deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Update kubeconfig for EKS
+        run: aws eks update-kubeconfig --name demo-cluster --region ap-south-1
+
+      - name: Ensure namespace exists
+        run: kubectl apply -f k8s/namespace.yaml
+
+      - name: Create/Update DB Secret
+        run: |
+          kubectl create secret generic demo-db-secret \
+            --namespace demo-main \
+            --from-literal=DB_URL='${{ secrets.DB_URL }}' \
+            --from-literal=DB_USERNAME='${{ secrets.DB_USERNAME }}' \
+            --from-literal=DB_PASSWORD='${{ secrets.DB_PASSWORD }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply Deployment & Service
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/demo-app -n demo-main
