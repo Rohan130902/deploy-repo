@@ -37,7 +37,7 @@ jobs:
 
       - name: Update deployment to use latest pushed Docker image
         run: |
-          kubectl set image deployment/demo-app demo-app=${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-main:main_${{ github.sha }} -n demo-main
+          kubectl set image deployment/demo-app demo-app=${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-main:main-latest -n demo-main
 
       - name: Apply manifests (service, deployment)
         run: |
