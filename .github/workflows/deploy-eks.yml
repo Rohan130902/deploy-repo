@@ -1,0 +1,48 @@
+name: Deploy to EKS (main)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Update kubeconfig for EKS
+        run: aws eks update-kubeconfig --name demo-cluster --region ap-south-1
+
+      - name: Ensure namespace exists
+        run: kubectl apply -f k8s/namespace.yaml
+
+      - name: Create/Update DB Secret
+        run: |
+          kubectl create secret generic demo-db-secret \
+            --namespace demo-main \
+            --from-literal=DB_URL='${{ secrets.DB_URL }}' \
+            --from-literal=DB_USERNAME='${{ secrets.DB_USERNAME }}' \
+            --from-literal=DB_PASSWORD='${{ secrets.DB_PASSWORD }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Update deployment to use latest pushed Docker image
+        run: |
+          kubectl set image deployment/demo-app demo-app=${{ secrets.DOCKERHUB_USERNAME }}/deploy-repo-main:main_${{ github.sha }} -n demo-main
+
+      - name: Apply manifests (service, deployment)
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/demo-app -n demo-main
