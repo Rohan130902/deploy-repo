@@ -1,15 +1,13 @@
-# Use Java 17 runtime
-FROM eclipse-temurin:17-jdk-jammy
-
-# Set working dir inside container
+# Stage 1: Build the JAR
+FROM maven:3.9.6-eclipse-temurin-17 AS build
 WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn clean package -DskipTests
 
-# Copy the built jar from target (we use wildcard so rename doesn’t matter)
-ARG JAR_FILE=target/*.jar
-COPY ${JAR_FILE} app.jar
-
-# Expose your app port (8081, since you configured SSL on 8081)
-EXPOSE 8081
-
-# Run the application
-ENTRYPOINT ["java","-jar","/app/app.jar"]
+# Stage 2: Run the JAR
+FROM eclipse-temurin:17-jdk-alpine
+WORKDIR /app
+COPY --from=build /app/target/demo-0.0.1-SNAPSHOT.jar app.jar
+EXPOSE 8080
+CMD ["java", "-jar", "app.jar"]
