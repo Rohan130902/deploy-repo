@@ -9,7 +9,8 @@ public class Hello {
     public String sayHello() {
      return "Hello, Spring Boot API is working ,testing docker 1!";
     }
-    
+
+ 
     @GetMapping("/")
     public String home() {
         return "Welcome! Your Spring Boot API is running 🚀";
